@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from tunnelnet.cable import danger_count
+from tunnelnet.occupancy import collect as occupancy_collect
 
 if TYPE_CHECKING:  # pragma: no cover - imported only for type checkers
     from .runtime import Runtime
@@ -77,4 +78,14 @@ def run_checks(rt: "Runtime") -> list[dict[str, str]]:
     )
 
     checks.append({"name": "audit", "status": "ok", "detail": f"records={rt.audit.count()}"})
+
+    occ_alarms = rt.occupancy.alarms()
+    over = [row for row in occupancy_collect(rt.occupancy).cabins if row.over]
+    checks.append(
+        {
+            "name": "occupancy",
+            "status": "warn" if (occ_alarms or over) else "ok",
+            "detail": f"alarms={len(occ_alarms)} over_cabins={len(over)}",
+        }
+    )
     return checks

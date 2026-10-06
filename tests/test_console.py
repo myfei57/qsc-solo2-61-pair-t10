@@ -55,7 +55,7 @@ class ConsoleCase(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(
             {check["name"] for check in checks["checks"]},
-            {"store", "access", "drain", "ventilation", "fire", "patrol", "quota", "cables", "environment", "audit"},
+            {"store", "access", "drain", "ventilation", "fire", "patrol", "quota", "cables", "environment", "audit", "occupancy"},
         )
 
         status, snapshot = self.call("GET", "/api/snapshot")
@@ -77,6 +77,7 @@ class ConsoleCase(unittest.TestCase):
                 "quota",
                 "cables",
                 "suppression",
+                "occupancy",
                 "audit",
             },
         )
@@ -133,7 +134,7 @@ class ConsoleCase(unittest.TestCase):
         self.assertEqual(metrics["requests"], 1)
 
     def test_pages_redirect_and_errors(self) -> None:
-        for page in ("/cabins", "/env", "/patrols", "/alarms"):
+        for page in ("/cabins", "/occupancy", "/env", "/patrols", "/alarms"):
             status, body = self.call("GET", page)
             self.assertEqual(status, 200)
             self.assertIn("<html", body)
@@ -571,6 +572,98 @@ class ConsoleCase(unittest.TestCase):
         self.assertEqual(len(report["ticks"]), 100)
         status, report = self.call("POST", "/api/simulate", {"ticks": -3})
         self.assertEqual(len(report["ticks"]), 5)
+
+    def test_occupancy_routes(self) -> None:
+        # Seed projection already shows worker-a in cabin-1 (capacity 2).
+        status, overview = self.call("GET", "/api/occupancy")
+        self.assertEqual(status, 200)
+        cabin1 = next(row for row in overview["cabins"] if row["cabin_id"] == "cabin-1")
+        self.assertEqual(cabin1["occupied"], 1)
+        self.assertEqual(cabin1["present"], ["worker-a"])
+
+        status, row = self.call("GET", "/api/occupancy/cabin", {"cabin_id": "cabin-3"})
+        self.assertEqual(status, 200)
+        self.assertEqual(row["capacity"], 6)
+
+        # Fill cabin-3 through the online gate, then the next IN must be refused.
+        for index in range(6):
+            status, body = self.call(
+                "POST",
+                "/api/occupancy/swipe",
+                {
+                    "cabin_id": "cabin-3",
+                    "person_id": f"p{index}",
+                    "direction": "in",
+                    "at": f"2026-10-05T08:00:0{index}Z",
+                    "event_id": f"http-{index}",
+                },
+            )
+            self.assertEqual(status, 200)
+            self.assertTrue(body["decisions"][0]["allowed"])
+        status, blocked = self.call(
+            "POST",
+            "/api/occupancy/swipe",
+            {"cabin_id": "cabin-3", "person_id": "pX", "direction": "in", "at": "2026-10-05T08:00:09Z", "event_id": "http-x"},
+        )
+        self.assertFalse(blocked["decisions"][0]["allowed"])
+
+        # Console head count, canonical event-log fold and dashboard agree.
+        status, row = self.call("GET", "/api/occupancy/cabin", {"cabin_id": "cabin-3"})
+        self.assertEqual(row["occupied"], 6)
+        self.assertTrue(row["at_capacity"])
+        status, events = self.call("GET", "/api/occupancy/events", {"cabin_id": "cabin-3"})
+        self.assertEqual(events["count"], row["version"])
+        status, report = self.call("GET", "/api/report")
+        self.assertEqual(report["occupancy"]["total_occupied"], 8)
+
+        # Capacity admission on approval: denied at full, allowed after an OUT.
+        status, denied = self.call("POST", "/api/occupancy/approve", {"cabin_id": "cabin-3", "person_id": "late"})
+        self.assertFalse(denied["allowed"])
+        self.call(
+            "POST",
+            "/api/occupancy/swipe",
+            {"cabin_id": "cabin-3", "person_id": "p0", "direction": "out", "at": "2026-10-05T08:05:00Z", "event_id": "http-o0"},
+        )
+        status, granted = self.call("POST", "/api/occupancy/approve", {"cabin_id": "cabin-3", "person_id": "late", "ttl_seconds": 300})
+        self.assertTrue(granted["allowed"])
+        self.assertTrue(granted["reservation_id"])
+
+        # Offline batch: one bad event rejected, the good one applied.
+        status, batch = self.call(
+            "POST",
+            "/api/occupancy/batch",
+            {
+                "events": [
+                    {"cabin_id": "cabin-3", "person_id": "g", "direction": "sideways", "at": "t", "event_id": "bad"},
+                    {"cabin_id": "cabin-3", "person_id": "g2", "direction": "out", "at": "2026-10-05T07:00:00Z", "event_id": "good-out"},
+                ]
+            },
+        )
+        self.assertEqual(len(batch["accepted"]), 1)
+        self.assertEqual(batch["rejected"][0]["event_id"], "bad")
+
+        # Idempotent replay of the same offline event.
+        status, replay = self.call(
+            "POST", "/api/occupancy/backfill",
+            {"cabin_id": "cabin-3", "person_id": "g2", "direction": "out", "at": "2026-10-05T07:00:00Z", "event_id": "good-out"},
+        )
+        self.assertEqual(len(replay["duplicates"]), 1)
+
+        # Manual adjustment and alarm acknowledgement.
+        status, adjustment = self.call(
+            "POST", "/api/occupancy/adjust",
+            {"cabin_id": "cabin-3", "delta": 1, "note": "escorted visitor", "event_id": "adj-1"},
+        )
+        self.assertEqual(len(adjustment["accepted"]), 1)
+        status, alarms = self.call("GET", "/api/occupancy/alarms")
+        manual = next(alarm for alarm in alarms["alarms"] if alarm["kind"] == "manual_adjustment")
+        status, ack = self.call("POST", "/api/occupancy/alarms/ack", {"key": manual["key"]})
+        self.assertTrue(ack["acknowledged"])
+
+        status, body = self.call("POST", "/api/occupancy/configure", {"cabin_id": "cabin-9", "capacity": 10})
+        self.assertTrue(body["configured"])
+        status, body = self.call("POST", "/api/occupancy/swipe", {"cabin_id": "cabin-3"})
+        self.assertEqual(status, 400)
 
     def test_ops_reset_store(self) -> None:
         self.call("POST", "/api/access/approve", {"cabin_id": "cabin-1", "requester": "ops"})

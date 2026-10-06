@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from tunnelnet.cable import danger_count, healthy_count, load_factor
 from tunnelnet.cabin import status_summary
 from tunnelnet.ns import Stage, control_chain
+from tunnelnet.occupancy import collect as occupancy_collect
 
 from .describe import collect as collect_describe
 from .telemetry import collect as collect_telemetry
@@ -38,6 +39,7 @@ def text_report(rt: "Runtime") -> str:
         f"quota: {describe['quota']}",
         f"cables: {describe['cables']}",
         f"suppression: {describe['suppression']}",
+        f"occupancy: {describe['occupancy']}",
         f"audit: {describe['audit']}",
         f"cable danger={telemetry.cable_danger} load_factor={load_factor(rt.cables):.4f}",
         f"drain pits={telemetry.pits} high={telemetry.high_pits} cycles={telemetry.cycles}",
@@ -57,6 +59,7 @@ def dashboard(rt: "Runtime") -> dict[str, object]:
 
     fire_report = rt.fire.report()
     quota_report = rt.quota.report()
+    occupancy = occupancy_collect(rt.occupancy)
     return {
         "namespaces": {"count": rt.namespaces.count()},
         "cabins": status_summary(rt.cabins).as_dict(),
@@ -93,4 +96,11 @@ def dashboard(rt: "Runtime") -> dict[str, object]:
         },
         "audit": {"count": rt.audit.count(), "by_event": rt.audit.summary()},
         "access": rt.access.summary(),
+        "occupancy": {
+            "cabins": len(occupancy.cabins),
+            "total_occupied": occupancy.total_occupied,
+            "events": len(occupancy.events),
+            "active_alarms": occupancy.active_alarms,
+            "rows": [row.as_dict() for row in occupancy.cabins],
+        },
     }

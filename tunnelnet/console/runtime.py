@@ -10,6 +10,7 @@ from tunnelnet.drain import DrainService, PumpUnit
 from tunnelnet.env import Environment
 from tunnelnet.fire import FireService
 from tunnelnet.ns import Registry as NamespaceRegistry
+from tunnelnet.occupancy import OccupancyService
 from tunnelnet.patrol import PatrolService
 from tunnelnet.quota import QuotaService
 from tunnelnet.store import Store
@@ -40,4 +41,5 @@ class Runtime:
         self.patrol = PatrolService(self.cabins)
         self.power_book = PowerBook()
         self.quota = QuotaService(self.cabins, self.power_book)
+        self.occupancy = OccupancyService(store)
         self.audit = AuditRegistry()

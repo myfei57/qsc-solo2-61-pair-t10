@@ -51,4 +51,7 @@ def reset_store(rt: "Runtime") -> dict[str, object]:
     for kind in rt.store.kinds():
         for record_id in rt.store.list(kind):
             rt.store.delete(kind, record_id)
+    # The durable ledger, reservations, approvals and alarms lived on disk;
+    # drop their in-memory projections too so the console matches the reset.
+    rt.occupancy.reset_records()
     return {"reset": True, "records": rt.store.file_count()}

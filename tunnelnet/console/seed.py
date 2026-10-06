@@ -54,3 +54,28 @@ def seed_defaults(rt: Runtime) -> None:
     rt.cables.sample("cable-1", 47.0)
 
     rt.patrol.rebuild_route()
+
+    # Occupancy: every cabin gets a head-count capacity and dwell limit, and the
+    # ledger starts with a paired in/out and one person still inside cabin-1.
+    capacities = (("cabin-1", 2, 28_800), ("cabin-2", 4, 28_800), ("cabin-3", 6, 28_800))
+    for cabin_id, capacity, dwell in capacities:
+        rt.occupancy.configure_cabin(cabin_id, capacity, dwell_limit_seconds=dwell)
+    from tunnelnet.occupancy import SwipeEvent
+
+    def seed(event_id: str, cabin_id: str, person_id: str, direction: str, at: str) -> None:
+        rt.occupancy.seed_event(
+            SwipeEvent(
+                id=event_id,
+                cabin_id=cabin_id,
+                person_id=person_id,
+                direction=direction,
+                at=at,
+                received_at=SEED_AT,
+            )
+        )
+
+    # worker-a still inside cabin-1; worker-b paired in/out; worker-c in cabin-2.
+    seed("seed-in-a", "cabin-1", "worker-a", "in", "2026-01-01T00:00:01Z")
+    seed("seed-in-b", "cabin-1", "worker-b", "in", "2026-01-01T00:00:02Z")
+    seed("seed-out-b", "cabin-1", "worker-b", "out", "2026-01-01T00:02:00Z")
+    seed("seed-in-c", "cabin-2", "worker-c", "in", "2026-01-01T00:00:03Z")

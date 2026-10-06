@@ -8,6 +8,7 @@ from .http import Response, error_response, html_response, redirect_response
 
 PAGE_FILES: dict[str, str] = {
     "cabins": "cabins.html",
+    "occupancy": "occupancy.html",
     "env": "env.html",
     "patrols": "patrols.html",
     "alarms": "alarms.html",

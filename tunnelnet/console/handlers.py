@@ -22,6 +22,7 @@ from . import telemetry as telemetry_module
 from .audit_log import record_event
 from .cycle import run_cycle
 from .http import Request, RequestError, Response, csv_response, json_response, text_response
+from . import occupancy_handlers
 from .report import dashboard, text_report
 from .routes import route_table
 from .simulate import run_simulation
@@ -774,3 +775,22 @@ def export_telemetry(server: "Server", request: Request) -> Response:
 def export_store(server: "Server", request: Request) -> Response:
     columns, rows = store_csv_export(server.runtime.store)
     return csv_response(to_csv(columns, rows))
+
+
+# Occupancy handlers live in their own module; expose them under the names the
+# route table binds via ``getattr(handlers, ...)``.
+occupancy_overview = occupancy_handlers.occupancy_overview
+occupancy_cabins = occupancy_handlers.occupancy_cabins
+occupancy_cabin = occupancy_handlers.occupancy_cabin
+occupancy_configure = occupancy_handlers.occupancy_configure
+occupancy_swipe = occupancy_handlers.occupancy_swipe
+occupancy_backfill = occupancy_handlers.occupancy_backfill
+occupancy_batch = occupancy_handlers.occupancy_batch
+occupancy_approve = occupancy_handlers.occupancy_approve
+occupancy_approvals = occupancy_handlers.occupancy_approvals
+occupancy_reservations = occupancy_handlers.occupancy_reservations
+occupancy_adjust = occupancy_handlers.occupancy_adjust
+occupancy_events = occupancy_handlers.occupancy_events
+occupancy_alarms = occupancy_handlers.occupancy_alarms
+occupancy_alarm_ack = occupancy_handlers.occupancy_alarm_ack
+occupancy_sweep = occupancy_handlers.occupancy_sweep
