@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 import time
 import uuid
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from tunnelnet.store import Approval, Store, approval_exists, save_approval
 
@@ -13,11 +13,23 @@ from .model import AccessRequest
 from .report import AccessState, request_payloads
 from .summary import summarize
 
+if TYPE_CHECKING:  # pragma: no cover - imported only for type checkers
+    from tunnelnet.occupancy import Decision
+
 
 class DoorController(Protocol):
     """Releases the door of a cabin once an approval is durable."""
 
     def release_door(self, cabin_id: str) -> None:  # pragma: no cover - structural
+        ...
+
+
+class AdmissionGate(Protocol):
+    """Decides whether one more person may enter a cabin."""
+
+    def admit(
+        self, *, cabin_id: str, person_id: str, admission_id: str = ""
+    ) -> "Decision":  # pragma: no cover - structural
         ...
 
 
@@ -28,9 +40,10 @@ def _stamp() -> str:
 class AccessService:
     """Submits entry requests and grants them in the durable order."""
 
-    def __init__(self, store: Store, doors: DoorController) -> None:
+    def __init__(self, store: Store, doors: DoorController, gate: AdmissionGate | None = None) -> None:
         self._store = store
         self._doors = doors
+        self._gate = gate
         self._lock = threading.RLock()
         self._requests: list[AccessRequest] = []
 
@@ -45,7 +58,11 @@ class AccessService:
             return [request for request in self._requests if request.status == "pending"]
 
     def approve(self, cabin_id: str, requester: str) -> Approval:
-        """Persist the approval first, then release the cabin door."""
+        """Persist the approval first, then release the cabin door.
+
+        When an admission gate is wired, the headcount gate decides first:
+        a cabin at its limit denies the entry and the door stays sealed.
+        """
 
         approval = Approval(
             id=uuid.uuid4().hex,
@@ -53,6 +70,12 @@ class AccessService:
             requester=requester,
             granted_at=_stamp(),
         )
+        if self._gate is not None:
+            decision = self._gate.admit(
+                cabin_id=cabin_id, person_id=requester, admission_id=approval.id
+            )
+            if decision.decision != "APPROVED":
+                raise ValueError(f"cabin {cabin_id} is at capacity, entry denied")
         save_approval(self._store, approval)
         self._doors.release_door(cabin_id)
         return approval

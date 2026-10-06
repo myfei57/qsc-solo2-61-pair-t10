@@ -255,6 +255,118 @@ def access_revoke(server: "Server", request: Request) -> Response:
     return json_response({"revoked": approval_id})
 
 
+def _require_cabin(server: "Server", cabin_id: str) -> str:
+    if not cabin_id:
+        raise RequestError(400, "cabin_id is required")
+    if not server.runtime.cabins.has(cabin_id):
+        raise RequestError(404, f"cabin {cabin_id} not found")
+    return cabin_id
+
+
+def occupancy_overview(server: "Server", request: Request) -> Response:
+    return json_response({"items": server.runtime.occupancy.overview()})
+
+
+def occupancy_console(server: "Server", request: Request) -> Response:
+    cabin_id = _require_cabin(server, request.query_field("cabin_id"))
+    return json_response(server.runtime.occupancy.console(cabin_id))
+
+
+def occupancy_audit(server: "Server", request: Request) -> Response:
+    cabin_id = request.query_field("cabin_id")
+    events = server.runtime.occupancy.audit(cabin_id or None)
+    return json_response({"items": [event.as_dict() for event in events], "count": len(events)})
+
+
+def occupancy_admissions(server: "Server", request: Request) -> Response:
+    cabin_id = request.query_field("cabin_id")
+    decisions = server.runtime.occupancy.decisions(cabin_id or None)
+    return json_response(
+        {"items": [decision.as_dict() for decision in decisions], "count": len(decisions)}
+    )
+
+
+def occupancy_alerts(server: "Server", request: Request) -> Response:
+    cabin_id = request.query_field("cabin_id")
+    status = request.query_field("status", "open")
+    alerts = server.runtime.occupancy.alerts(cabin_id or None, status)
+    return json_response({"items": [alert.as_dict() for alert in alerts], "count": len(alerts)})
+
+
+def occupancy_alert_ack(server: "Server", request: Request) -> Response:
+    alert = server.runtime.occupancy.ack_alert(request.str_field("alert_id"))
+    return json_response(alert.as_dict())
+
+
+def occupancy_configure(server: "Server", request: Request) -> Response:
+    cabin_id = _require_cabin(server, request.str_field("cabin_id"))
+    capacity = request.int_field("capacity") if request.payload.get("capacity") is not None else None
+    max_stay = (
+        request.int_field("max_stay_minutes")
+        if request.payload.get("max_stay_minutes") is not None
+        else None
+    )
+    limit = server.runtime.occupancy.configure(
+        cabin_id, capacity=capacity, max_stay_minutes=max_stay
+    )
+    record_event(server.runtime, "occupancy_configured", cabin_id)
+    return json_response(limit.as_dict())
+
+
+def occupancy_event(server: "Server", request: Request) -> Response:
+    cabin_id = _require_cabin(server, request.str_field("cabin_id"))
+    event_time = request.str_field("event_time")
+    if not event_time:
+        raise RequestError(400, "event_time is required")
+    device_seq = (
+        request.int_field("device_seq") if request.payload.get("device_seq") is not None else None
+    )
+    result = server.runtime.occupancy.apply_event(
+        cabin_id=cabin_id,
+        person_id=request.str_field("person_id"),
+        direction=request.str_field("direction").upper(),
+        event_time=event_time,
+        event_id=request.str_field("event_id"),
+        source=request.str_field("source", "device") or "device",
+        device_id=request.str_field("device_id"),
+        device_seq=device_seq,
+    )
+    return json_response(result)
+
+
+def occupancy_batch(server: "Server", request: Request) -> Response:
+    items = request.payload.get("events", [])
+    if not isinstance(items, list):
+        raise RequestError(400, "events must be a list")
+    results = server.runtime.occupancy.apply_batch(
+        [dict(item) for item in items if isinstance(item, dict)]
+    )
+    return json_response({"results": results})
+
+
+def occupancy_admit(server: "Server", request: Request) -> Response:
+    cabin_id = _require_cabin(server, request.str_field("cabin_id"))
+    decision = server.runtime.occupancy.admit(
+        cabin_id=cabin_id,
+        person_id=request.str_field("person_id"),
+        admission_id=request.str_field("admission_id"),
+    )
+    record_event(server.runtime, f"occupancy_{decision.decision.lower()}", decision.admission_id)
+    payload = decision.as_dict()
+    payload["in_count"] = server.runtime.occupancy.console(cabin_id)["in_count"]
+    return json_response(payload)
+
+
+def occupancy_scan(server: "Server", request: Request) -> Response:
+    raised = server.runtime.occupancy.scan_overstay()
+    return json_response({"raised": raised})
+
+
+def occupancy_reconcile(server: "Server", request: Request) -> Response:
+    cabin_id = _require_cabin(server, request.str_field("cabin_id"))
+    return json_response(server.runtime.occupancy.reconcile(cabin_id))
+
+
 def env_overview(server: "Server", request: Request) -> Response:
     env = server.runtime.env
     return json_response(

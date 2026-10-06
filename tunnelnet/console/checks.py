@@ -30,6 +30,15 @@ def run_checks(rt: "Runtime") -> list[dict[str, str]]:
         }
     )
 
+    open_alerts = len(rt.occupancy.alerts())
+    checks.append(
+        {
+            "name": "occupancy",
+            "status": "warn" if open_alerts else "ok",
+            "detail": f"open alerts={open_alerts}",
+        }
+    )
+
     high = rt.drain.high_count()
     checks.append(
         {"name": "drain", "status": "warn" if high else "ok", "detail": f"high pits={high}"}

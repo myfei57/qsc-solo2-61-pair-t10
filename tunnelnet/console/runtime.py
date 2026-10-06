@@ -10,6 +10,7 @@ from tunnelnet.drain import DrainService, PumpUnit
 from tunnelnet.env import Environment
 from tunnelnet.fire import FireService
 from tunnelnet.ns import Registry as NamespaceRegistry
+from tunnelnet.occupancy import OccupancyLedger
 from tunnelnet.patrol import PatrolService
 from tunnelnet.quota import QuotaService
 from tunnelnet.store import Store
@@ -30,7 +31,8 @@ class Runtime:
         self.filter = MovingAverage(3)
         self.cables = CableRegistry()
         self.env = Environment(self.filter, self.partitions, DEFAULT_THRESHOLD)
-        self.access = AccessService(store, self.cabins)
+        self.occupancy = OccupancyLedger(store)
+        self.access = AccessService(store, self.cabins, gate=self.occupancy)
         self.pump = PumpUnit()
         self.drain = DrainService(self.cabins, self.pump, store)
         self.ventilation = VentService()

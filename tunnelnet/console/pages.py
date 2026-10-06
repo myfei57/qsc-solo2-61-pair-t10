@@ -11,6 +11,7 @@ PAGE_FILES: dict[str, str] = {
     "env": "env.html",
     "patrols": "patrols.html",
     "alarms": "alarms.html",
+    "occupancy": "occupancy.html",
 }
 
 

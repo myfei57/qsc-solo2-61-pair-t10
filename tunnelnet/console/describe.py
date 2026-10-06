@@ -22,6 +22,7 @@ def collect(rt: "Runtime") -> dict[str, str]:
         "partitions": rt.partitions.describe(),
         "power": rt.power_book.describe(),
         "access": rt.access.describe(),
+        "occupancy": rt.occupancy.describe(),
         "environment": rt.env.describe(),
         "drain": rt.drain.describe(),
         "ventilation": rt.ventilation.describe(),

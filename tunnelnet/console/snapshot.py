@@ -21,6 +21,7 @@ def collect(rt: "Runtime") -> dict[str, object]:
         "cabins": rt.cabins.state().as_dict(),
         "partitions": {"mapping": rt.partitions.mapping(), "revision": rt.partitions.revision()},
         "access": rt.access.state().as_dict(),
+        "occupancy": rt.occupancy.state(),
         "environment": rt.env.state().as_dict(),
         "drain": rt.drain.state().as_dict(),
         "ventilation": rt.ventilation.state().as_dict(),

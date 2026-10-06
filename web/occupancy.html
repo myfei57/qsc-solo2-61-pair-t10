@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Occupancy</title>
+<style>
+body { font-family: system-ui, sans-serif; margin: 2rem; color: #1b1f24; }
+nav a { margin-right: 1rem; color: #0b5fff; text-decoration: none; }
+table { border-collapse: collapse; margin-top: 1rem; }
+th, td { border: 1px solid #d0d7de; padding: 0.4rem 0.75rem; text-align: left; }
+th { background: #f6f8fa; }
+.bad { color: #b42318; font-weight: 600; }
+.ok { color: #067647; }
+section { margin-top: 2rem; }
+</style>
+</head>
+<body>
+<nav><a href="/cabins">Cabins</a><a href="/env">Environment</a><a href="/patrols">Patrols</a><a href="/alarms">Alarms</a><a href="/occupancy">Occupancy</a></nav>
+<h1>Occupancy</h1>
+<p>Live headcount per cabin. Every figure is cross-checked against the audit
+log on each read: a cabin is <span class="ok">consistent</span> only when the
+materialised count, the last ledger booking and a full replay of the passage
+log all agree. Click a cabin to see who is inside.</p>
+<table>
+<thead><tr><th>Cabin</th><th>Inside</th><th>Capacity</th><th>Free</th><th>Version</th><th>Consistent</th></tr></thead>
+<tbody id="rows"></tbody>
+</table>
+<section id="roster-section" hidden>
+<h2 id="roster-title">Roster</h2>
+<table>
+<thead><tr><th>Person</th><th>Inside since</th><th>Stayed (s)</th><th>Overstayed</th></tr></thead>
+<tbody id="roster"></tbody>
+</table>
+</section>
+<section>
+<h2>Open alerts</h2>
+<table>
+<thead><tr><th>Cabin</th><th>Person</th><th>Type</th><th>Count</th><th>Detail</th><th>Raised at</th></tr></thead>
+<tbody id="alerts"></tbody>
+</table>
+</section>
+<script>
+async function loadRoster(cabinId) {
+  const response = await fetch("/api/occupancy/console?cabin_id=" + encodeURIComponent(cabinId));
+  const view = await response.json();
+  document.getElementById("roster-section").hidden = false;
+  document.getElementById("roster-title").textContent =
+    `Roster of ${cabinId} (${view.in_count} inside, consistent: ${view.consistent})`;
+  document.getElementById("roster").innerHTML = view.roster.map((row) =>
+    `<tr><td>${row.person_id}</td><td>${row.since}</td><td>${row.stayed_seconds}</td>` +
+    `<td class="${row.overstayed ? "bad" : ""}">${row.overstayed}</td></tr>`).join("");
+}
+async function load() {
+  const overview = await (await fetch("/api/occupancy")).json();
+  document.getElementById("rows").innerHTML = overview.items.map((view) =>
+    `<tr onclick="loadRoster('${view.cabin_id}')" style="cursor:pointer">` +
+    `<td>${view.cabin_id}</td><td>${view.in_count}</td>` +
+    `<td>${view.capacity === null ? "—" : view.capacity}</td>` +
+    `<td>${view.free_slots === null ? "—" : view.free_slots}</td>` +
+    `<td>${view.version}</td>` +
+    `<td class="${view.consistent ? "ok" : "bad"}">${view.consistent}</td></tr>`).join("");
+  const alerts = await (await fetch("/api/occupancy/alerts")).json();
+  document.getElementById("alerts").innerHTML = alerts.items.map((alert) =>
+    `<tr><td>${alert.cabin_id}</td><td>${alert.person_id}</td><td>${alert.type}</td>` +
+    `<td>${alert.count_at_alert}</td><td>${alert.detail}</td><td>${alert.created_at}</td></tr>`).join("");
+}
+load();
+</script>
+</body>
+</html>
